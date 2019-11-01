@@ -1,0 +1,17 @@
+{
+    "files.associations": {
+        "stdlib.h": "c",
+        "string_util.h": "c",
+        "syntax.h": "c",
+        "trie.h": "c",
+        "parser.h": "c",
+        "lexical.h": "c",
+        "error.h": "c",
+        "ast.h": "c",
+        "stdarg.h": "c",
+        "scanner.h": "c",
+        "syntax_def.h": "c",
+        "list.h": "c",
+        "defs.h": "c"
+    }
+}
