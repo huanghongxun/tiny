@@ -40,6 +40,18 @@ void tiny_scanner_reset(tiny_scanner_t *scanner, tiny_scanner_token_t *token)
     scanner->cur = &token->list;
 }
 
+int tiny_scanner_diff(tiny_scanner_t *scanner, tiny_scanner_token_t *token)
+{
+    int dist = 0;
+    list_entry_t *entry = &token->list;
+    while (entry != scanner->cur && entry->next != &token->list)
+    {
+        entry = entry->next;
+        dist++;
+    }
+    return dist;
+}
+
 void tiny_scanner_begin(tiny_scanner_t *scanner, void *ctx, void (*reader)(void *ctx, tiny_lex_token_t *token))
 {
     list_init(&scanner->tokens);

@@ -54,13 +54,13 @@ static void print_error_message(tiny_lex_token_t *token, const char *message)
     putchar('\n');
     print_token(tiny_lex_current_line(token), stderr);
     putchar('\n');
-    for (int i = 0; i < token->line_column; ++i)
+    for (int i = 1; i < token->line_column; ++i)
         putchar(' ');
     putchar('^');
     putchar('\n');
 }
 
-static void error(tiny_lex_token_t *token, int ret)
+static void error(tiny_lex_token_t *token, const char *required_token, int ret)
 {
     if (ret == TINY_UNEXPECTED_EOF)
     {
@@ -69,7 +69,9 @@ static void error(tiny_lex_token_t *token, int ret)
     }
     else if (ret == TINY_UNEXPECTED_TOKEN)
     {
-        print_error_message(token, "Unexpected token");
+        char message[1024];
+        sprintf(message, "Unexpected token, required \"%s\"", required_token);
+        print_error_message(token, message);
         return;
     }
     else if (ret == TINY_INVALID_STRING)
@@ -147,6 +149,11 @@ static void error(tiny_lex_token_t *token, int ret)
         print_error_message(token, "Unexpected token '%s', maybe you want a func call?");
         return;
     }
+    else if (ret == TINY_UNTERMINATED_STRING_OR_CHARACTER)
+    {
+        print_error_message(token, "Unterminated string or character");
+        return;
+    }
 }
 
 void lex_reader(void *ctx, tiny_lex_token_t *token)
@@ -168,7 +175,7 @@ void lex_reader(void *ctx, tiny_lex_token_t *token)
     }
     else
     {
-        error(token, ret);
+        // error(token, "", ret);
     }
 }
 
@@ -294,7 +301,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        error(&result.error_token, result.state);
+        error(&result.error_token, result.required_token, result.state);
     }
     
     return 0;

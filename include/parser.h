@@ -5,9 +5,12 @@
 #include "scanner.h"
 #include "trie.h"
 #include "ast.h"
+#include "defs.h"
 
 // 克林闭包，表示 replica*
 #define KLEENE(replica) tiny_make_parser_kleene(replica)
+// 克林闭包，匹配到 terminator，表示 replica*
+#define KLEENE_UNTIL(terminator, replica) tiny_make_parser_kleene_until(terminator, replica)
 // 或，表示 a | b | c | ... | ...
 #define OR(...) tiny_make_parser_or(PP_NARG(__VA_ARGS__), __VA_ARGS__)
 // 连接，表示 a b c ...
@@ -20,6 +23,8 @@
 #define TOKEN(token) tiny_make_parser_token(token)
 // 匹配字符且忽略大小写，EBNF 中表示匹配一个 token 'token'
 #define TOKEN_IGNORE_CASE(token) tiny_make_parser_token_ignore_case(token)
+// 匹配 EOF
+#define TOKEN_EOF tiny_make_parser_token_eof()
 // 匹配指定字符
 #define TOKEN_PREDICATE(predicate) tiny_make_parser_token_predicate(predicate)
 // 表示 EBNF 中类似 a (b a)*，即 a 之间用 b 隔开
@@ -46,6 +51,7 @@ struct tiny_parser_result_s {
     int state;
     bool fatal;
     tiny_lex_token_t error_token;
+    const char *required_token;
 };
 
 struct tiny_parser_ctx_s {
@@ -68,12 +74,14 @@ typedef struct tiny_parser_ctx_s tiny_parser_ctx_t;
 typedef struct tiny_parser_s tiny_parser_t;
 
 tiny_parser_t *tiny_make_parser();
-tiny_parser_t *tiny_make_parser_kleene(tiny_parser_t *single);
+tiny_parser_t *tiny_make_parser_kleene(tiny_parser_t *replica);
+tiny_parser_t *tiny_make_parser_kleene_until(tiny_parser_t *terminator, tiny_parser_t *replica);
 tiny_parser_t *tiny_make_parser_or(int n, ...);
 tiny_parser_t *tiny_make_parser_sequence(int n, ...);
 tiny_parser_t *tiny_make_parser_grammar(const char *name);
 tiny_parser_t *tiny_make_parser_optional(tiny_parser_t *optional);
 tiny_parser_t *tiny_make_parser_token(const char *name);
+tiny_parser_t *tiny_make_parser_token_eof();
 tiny_parser_t *tiny_make_parser_token_ignore_case(const char *name);
 tiny_parser_t *tiny_make_parser_token_predicate(bool (*predicate)(const char *, const char *));
 tiny_parser_t *tiny_make_parser_separation(tiny_parser_t *separator, tiny_parser_t *replica);

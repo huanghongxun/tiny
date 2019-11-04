@@ -253,9 +253,9 @@ DEFINE(func, TINY_DESC_FUNC,
         GRAMMAR(type),
         WITH_DESC(TINY_DESC_MAIN, OPTIONAL(TOKEN_IGNORE_CASE("main"))),
         GRAMMAR(identifier),
-        ELIMINATE(TOKEN("(")),
+        TOKEN("("),
         GRAMMAR(formal_params),
-        ELIMINATE(TOKEN(")")),
+        TOKEN(")"),
         GRAMMAR(block)
     )
 );
@@ -263,8 +263,8 @@ DEFINE(func, TINY_DESC_FUNC,
 DEFINE(vars, TINY_DESC_DECL,
     SEQUENCE(
         GRAMMAR(type),
-        SEPARATION(ELIMINATE(TOKEN(",")), GRAMMAR(identifier)),
-        ELIMINATE(TOKEN(";"))
+        SEPARATION(TOKEN(","), GRAMMAR(identifier)),
+        TOKEN(";")
     )
 );
 // type -> 'int' | 'type'
@@ -273,16 +273,16 @@ DEFINE(type, TINY_DESC_TYPE, OR(TOKEN_IGNORE_CASE("int"), TOKEN_IGNORE_CASE("rea
 DEFINE(identifier, TINY_DESC_IDENTIFIER, TOKEN_PREDICATE(is_identifier));
 // formal_params = formal_param (',' formal_param)*
 DEFINE(formal_params, TINY_DESC_FORMAL_PARAMS,
-    SEPARATION(ELIMINATE(TOKEN(",")), GRAMMAR(formal_param)));
+    SEPARATION(TOKEN(","), GRAMMAR(formal_param)));
 // formal_param -> type identifier
 DEFINE(formal_param, TINY_DESC_FORMAL_PARAM,
     SEQUENCE(GRAMMAR(type), GRAMMAR(identifier)));
 // block -> 'BEGIN' statement* 'END'
 DEFINE(block, TINY_DESC_BLOCK,
     SEQUENCE(
-        ELIMINATE(TOKEN("BEGIN")),
+        TOKEN("BEGIN"),
         KLEENE(GRAMMAR(statement)),
-        ELIMINATE(TOKEN("END"))
+        TOKEN("END")
     )
 );
 // statement -> block | vars | expression ';' | return | if
@@ -290,7 +290,7 @@ DEFINE(statement, TINY_DESC_ELIMINATE,
     OR(
         GRAMMAR(block),
         GRAMMAR(vars),
-        SEQUENCE(GRAMMAR(expression), ELIMINATE(TOKEN(";"))),
+        SEQUENCE(GRAMMAR(expression), TOKEN(";")),
         GRAMMAR(return),
         GRAMMAR(if)
     )
@@ -302,14 +302,14 @@ DEFINE(number, TINY_DESC_NUMBER, TOKEN_PREDICATE(is_number));
 DEFINE(if, TINY_DESC_IF,
     SEQUENCE(
         TOKEN_IGNORE_CASE("if"),
-        ELIMINATE(TOKEN("(")),
+        TOKEN("("),
         GRAMMAR(expression),
-        ELIMINATE(TOKEN(")")),
+        TOKEN(")"),
         GRAMMAR(statement),
         OPTIONAL(
             else,
             SEQUENCE(
-                ELIMINATE(TOKEN_IGNORE_CASE("else")),
+                TOKEN_IGNORE_CASE("else"),
                 GRAMMAR(statement)
             )
         )
@@ -318,15 +318,15 @@ DEFINE(if, TINY_DESC_IF,
 // return -> 'return' expression ';'
 DEFINE(return, TINY_DESC_RETURN,
     SEQUENCE(
-        ELIMINATE(TOKEN_IGNORE_CASE("return")),
+        TOKEN_IGNORE_CASE("return"),
         GRAMMAR(expression),
-        ELIMINATE(TOKEN(";"))
+        TOKEN(";")
     )
 );
 // actual_params -> expression (',' expression)*
 DEFINE(actual_params, TINY_DESC_ACTUAL_PARAMS,
     SEPARATION(
-        ELIMINATE(TOKEN(",")),
+        TOKEN(","),
         GRAMMAR(expression)
     )
 );
@@ -334,9 +334,9 @@ DEFINE(actual_params, TINY_DESC_ACTUAL_PARAMS,
 DEFINE(unit0, TINY_DESC_ELIMINATE,
     OR(
         SEQUENCE(
-            ELIMINATE(TOKEN("(")),
+            TOKEN("("),
             GRAMMAR(expression),
-            ELIMINATE(TOKEN(")"))
+            TOKEN(")")
         ),
         GRAMMAR(call),
         GRAMMAR(number),
@@ -349,9 +349,9 @@ DEFINE(unit0, TINY_DESC_ELIMINATE,
 DEFINE(call, TINY_DESC_CALL,
     SEQUENCE(
         GRAMMAR(identifier),
-        ELIMINATE(TOKEN("(")),
+        TOKEN("("),
         GRAMMAR(actual_params),
-        ELIMINATE(TOKEN(")"))
+        TOKEN(")")
     )
 );
 DEFINE(unit2, TINY_DESC_BINARY, SEPARATION(OR(TOKEN("*"), TOKEN("/")), GRAMMAR(unit0)));
@@ -412,6 +412,46 @@ S -> A* B
 
 ## 实验结果
 
+### 源程序
+
+样例 TINY 程序和题目提供的一致：
+
+```
+/** this is a comment line in the sample program **/
+INT f2 INT x, INT y ) 
+BEGIN 
+    INT z;
+    z := x*x - y*y;
+    RETURN z; 
+END 
+INT MAIN f1() 
+BEGIN
+    INT x;
+    READ(x, "A41.input");
+    INT y;
+    READ(y, "A42.input");
+    INT z;
+    z := f2(x,y) + f2(y,x);
+    WRITE (z, "A4.output"); 
+END
+```
+
 ### 词法分析结果
 
+这里只展示前面一小部分，如果希望查看完整内容，可以在根目录的 `tokens.txt` 中查阅。
+
+![image-20191104130121136](assets/image-20191104130121136.png)
+
 ### 语法分析结果
+
+这里只展示前面一小部分，如果希望查看完整内容，可以在根目录的 `ast.txt` 查阅。
+
+![image-20191104131821383](assets/image-20191104131821383.png)
+
+### 词法错误报告
+
+![image-20191104132024982](assets/image-20191104132024982.png)
+
+### 语法错误报告
+
+![image-20191104132049666](assets/image-20191104132049666.png)

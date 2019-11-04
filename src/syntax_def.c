@@ -90,7 +90,8 @@ struct trie *prepare_parsers()
     DEFINE(
         root,
         TINY_DESC_ROOT,
-        KLEENE(
+        KLEENE_UNTIL(
+            TOKEN_EOF,
             OR(
                 GRAMMAR(func),
                 GRAMMAR(vars))));
@@ -102,9 +103,9 @@ struct trie *prepare_parsers()
             GRAMMAR(type),
             WITH_DESC(TINY_DESC_MAIN, OPTIONAL(TOKEN_IGNORE_CASE("main"))),
             GRAMMAR(identifier),
-            ELIMINATE(TOKEN("(")),
+            TOKEN("("),
             GRAMMAR(formal_params),
-            ELIMINATE(TOKEN(")")),
+            TOKEN(")"),
             GRAMMAR(block)));
     // vars -> type identifier (',' identifier)* ';'
     DEFINE(
@@ -113,9 +114,9 @@ struct trie *prepare_parsers()
         SEQUENCE(
             GRAMMAR(type),
             SEPARATION(
-                ELIMINATE(TOKEN(",")),
+                TOKEN(","),
                 GRAMMAR(identifier)),
-            ELIMINATE(TOKEN(";"))));
+            TOKEN(";")));
     // type -> 'int' | 'type'
     DEFINE(
         type,
@@ -133,7 +134,7 @@ struct trie *prepare_parsers()
         formal_params,
         TINY_DESC_FORMAL_PARAMS,
         SEPARATION(
-            ELIMINATE(TOKEN(",")),
+            TOKEN(","),
             GRAMMAR(formal_param)));
     // formal_param -> type identifier
     DEFINE(
@@ -147,17 +148,17 @@ struct trie *prepare_parsers()
         block,
         TINY_DESC_BLOCK,
         SEQUENCE(
-            ERROR(TINY_EXPECT_BEGIN, ELIMINATE(TOKEN("BEGIN"))),
-            KLEENE(GRAMMAR(statement)),
-            ERROR(TINY_EXPECT_END, ELIMINATE(TOKEN("END")))));
+            ERROR(TINY_EXPECT_BEGIN, TOKEN("BEGIN")),
+            KLEENE_UNTIL(TOKEN("END"), GRAMMAR(statement)),
+            ERROR(TINY_EXPECT_END, TOKEN("END"))));
     // statement -> block | vars | expression ';' | return | if
     DEFINE(
         statement,
-        TINY_DESC_ELIMINATE,
+        TINY_DESC_STATEMENT,
         ERROR(TINY_EXPECT_STATEMENT, OR(
                                          GRAMMAR(block),
                                          GRAMMAR(vars),
-                                         SEQUENCE(GRAMMAR(expression), ELIMINATE(TOKEN(";"))),
+                                         SEQUENCE(GRAMMAR(expression), TOKEN(";")),
                                          GRAMMAR(return ),
                                          GRAMMAR(if))));
     DEFINE(string, TINY_DESC_STRING, TOKEN_PREDICATE(is_string));
@@ -170,28 +171,28 @@ struct trie *prepare_parsers()
         TINY_DESC_IF,
         SEQUENCE(
             TOKEN_IGNORE_CASE("if"),
-            ERROR(TINY_EXPECT_LEFT_PARENTHESIS, ELIMINATE(TOKEN("("))),
+            ERROR(TINY_EXPECT_LEFT_PARENTHESIS, TOKEN("(")),
             GRAMMAR(expression),
-            ERROR(TINY_EXPECT_RIGHT_PARENTHESIS, ELIMINATE(TOKEN(")"))),
+            ERROR(TINY_EXPECT_RIGHT_PARENTHESIS, TOKEN(")")),
             GRAMMAR(statement),
             OPTIONAL(
                 SEQUENCE(
-                    ELIMINATE(TOKEN_IGNORE_CASE("else")),
+                    TOKEN_IGNORE_CASE("else"),
                     GRAMMAR(statement)))));
     // return -> 'return' expression ';'
     DEFINE(
         return,
-              TINY_DESC_RETURN,
-              SEQUENCE(
-                  ELIMINATE(TOKEN_IGNORE_CASE("return")),
-                  GRAMMAR(expression),
-                  ELIMINATE(TOKEN(";"))));
+        TINY_DESC_RETURN,
+        SEQUENCE(
+            TOKEN_IGNORE_CASE("return"),
+            GRAMMAR(expression),
+            TOKEN(";")));
     // actual_params -> expression (',' expression)*
     DEFINE(
         actual_params,
         TINY_DESC_ACTUAL_PARAMS,
         SEPARATION(
-            ERROR(TINY_EXPECT_COMMA, ELIMINATE(TOKEN(","))),
+            ERROR(TINY_EXPECT_COMMA, TOKEN(",")),
             GRAMMAR(expression)));
     // unit0 -> '(' expression ')' | call | number | identifier | string | character
     DEFINE(
@@ -199,9 +200,9 @@ struct trie *prepare_parsers()
         TINY_DESC_ELIMINATE,
         OR(
             SEQUENCE(
-                ELIMINATE(TOKEN("(")),
+                TOKEN("("),
                 GRAMMAR(expression),
-                ERROR(TINY_EXPECT_RIGHT_PARENTHESIS, ELIMINATE(TOKEN(")")))),
+                ERROR(TINY_EXPECT_RIGHT_PARENTHESIS, TOKEN(")"))),
             GRAMMAR(call),
             GRAMMAR(number),
             GRAMMAR(identifier),
@@ -213,9 +214,9 @@ struct trie *prepare_parsers()
         TINY_DESC_CALL,
         SEQUENCE(
             GRAMMAR(identifier),
-            ERROR(TINY_MAY_FUNC_CALL, ELIMINATE(TOKEN("("))),
+            ERROR(TINY_MAY_FUNC_CALL, TOKEN("(")),
             GRAMMAR(actual_params),
-            ERROR(TINY_EXPECT_RIGHT_PARENTHESIS, ELIMINATE(TOKEN(")")))));
+            ERROR(TINY_EXPECT_RIGHT_PARENTHESIS, TOKEN(")"))));
     DEFINE(
         unit2,
         TINY_DESC_BINARY,

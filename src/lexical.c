@@ -41,6 +41,7 @@ tiny_lex_token_t tiny_lex_current_line(tiny_lex_token_t *token)
 
 int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
 {
+    int errcode = 0;
     token->head = lex->code;
     token->tail = lex->code + lex->len;
     token->error = 0;
@@ -48,11 +49,12 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
     int c = tiny_lex_next_char(lex);
     while (isspace(c))
         c = tiny_lex_next_char(lex);
-    if (c == TINY_EOF)
-        return TINY_EOF;
 
     token->line_column = lex->line_column;
     token->line_number = lex->line_number;
+
+    if (c == TINY_EOF)
+        return TINY_EOF;
 
     if (c != TINY_EOF)
     {
@@ -65,7 +67,8 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
             {
                 if (c == TINY_EOF)
                 {
-                    return TINY_UNEXPECTED_EOF;
+                    errcode = TINY_UNTERMINATED_STRING_OR_CHARACTER;
+                    goto fail;
                 }
 
                 if (!escape)
@@ -85,9 +88,8 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
             if (ret.ret != 0)
             {
                 // 更新 token 的错误点
-                token->line_column += ret.column;
-                token->line_number = lex->line_number;
-                return ret.ret;
+                errcode = ret.ret;
+                goto fail;
             }
         }
         else if (isdigit(c))
@@ -97,9 +99,8 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
                 if (c != '0')
                 {
                     // 更新 token 的错误点
-                    token->line_column = lex->line_column;
-                    token->line_number = lex->line_number;
-                    return TINY_INVALID_NUMBER;
+                    errcode = TINY_INVALID_NUMBER;
+                    goto fail;
                 }
                 tiny_lex_next_char(lex);
                 while (c = tiny_lex_peek_char(lex, 0), is_hex_digit(c))
@@ -118,9 +119,8 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
                     if (!isdigit(c = tiny_lex_peek_char(lex, 0))) // 检查阶数是否合法
                     {
                         // 更新 token 的错误点
-                        token->line_column = lex->line_column;
-                        token->line_number = lex->line_number;
-                        return c == TINY_EOF ? TINY_UNEXPECTED_EOF : TINY_UNEXPECTED_TOKEN;
+                        errcode = c == TINY_EOF ? TINY_UNEXPECTED_EOF : TINY_UNEXPECTED_TOKEN;
+                        goto fail;
                     }
                     while (c = tiny_lex_peek_char(lex, 0), isdigit(c)) // 提取阶数
                         tiny_lex_next_char(lex);
@@ -162,9 +162,8 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
         else
         {
             // 更新 token 的错误点
-            token->line_column = lex->line_column;
-            token->line_number = lex->line_number;
-            return TINY_UNEXPECTED_EOF;
+            errcode = TINY_UNEXPECTED_EOF;
+            goto fail;
         }
 
         return tiny_lex_next(lex, token);
@@ -179,4 +178,10 @@ int tiny_lex_next(tiny_lex_t *lex, tiny_lex_token_t *token)
     }
 
     return 0;
+
+fail:
+    token->e = lex->code + (lex->cur - 1);
+    token->line_column = lex->line_column;
+    token->line_number = lex->line_number;
+    return errcode;
 }

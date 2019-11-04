@@ -29,8 +29,7 @@ static tiny_parser_ctx_t make_context(struct trie *parsers, tiny_parser_t *curre
 {
     tiny_parser_ctx_t ctx = {
         .parsers = parsers,
-        .current_parser = current_parser
-    };
+        .current_parser = current_parser};
     return ctx;
 }
 
@@ -39,18 +38,19 @@ static tiny_parser_result_t make_success_result(tiny_ast_t *ast)
     tiny_parser_result_t result;
     result.ast = ast;
     result.state = STATE_SUCCESS;
+    result.required_token = NULL;
     return result;
 }
 
-static tiny_parser_result_t make_failure_result(tiny_lex_token_t token, int error)
+static tiny_parser_result_t make_failure_result(tiny_lex_token_t token, const char *required_token, int error)
 {
     assert(error != 0);
     tiny_parser_result_t result = {
         .ast = NULL,
         .state = error,
         .fatal = false,
-        .error_token = token
-    };
+        .error_token = token,
+        .required_token = required_token};
     return result;
 }
 
@@ -88,8 +88,71 @@ tiny_parser_t *tiny_make_parser_kleene(tiny_parser_t *single)
     return ret;
 }
 
+static tiny_parser_result_t parser_kleene_until(tiny_parser_ctx_t ctx, tiny_scanner_t *scanner)
+{
+    tiny_ast_t *ast = tiny_make_ast(ctx.current_parser->desc);
+    tiny_parser_result_t one = make_success_result(NULL);
+
+    while (true)
+    {
+        tiny_scanner_token_t *save = tiny_scanner_now(scanner);
+        tiny_parser_result_t next = tiny_syntax_parse(
+            make_context(ctx.parsers, ctx.current_parser->child),
+            scanner);
+
+        if (next.state == STATE_SUCCESS)
+        {
+            // 解析成功，添加子 AST
+            tiny_ast_add_child(ast, next.ast);
+        }
+        else
+        {
+            if (next.fatal)
+                return next;
+            one = next;
+            tiny_scanner_reset(scanner, save);
+            break;
+        }
+    }
+
+    // 检查 terminator 是否存在
+    {
+        tiny_scanner_token_t *save = tiny_scanner_now(scanner);
+        tiny_parser_result_t next = tiny_syntax_parse(
+            make_context(ctx.parsers, ctx.current_parser->child->sibling),
+            scanner);
+
+        if (next.state == STATE_SUCCESS)
+        {
+            tiny_free_ast(next.ast);
+            tiny_scanner_reset(scanner, save);
+            return make_success_result(ast);
+        }
+        else
+        {
+            if (next.fatal)
+                return next;
+            if (one.state != STATE_SUCCESS)
+                return one;
+            else
+                return next;
+        }
+    }
+}
+
+tiny_parser_t *tiny_make_parser_kleene_until(tiny_parser_t *terminator, tiny_parser_t *replica)
+{
+    tiny_parser_t *ret = tiny_make_parser();
+    ret->parser = parser_kleene_until;
+    ret->child = replica;
+    replica->sibling = terminator;
+    return ret;
+}
+
 static tiny_parser_result_t parser_or(tiny_parser_ctx_t ctx, tiny_scanner_t *scanner)
 {
+    tiny_parser_result_t one;
+    int diff = -1;
     tiny_scanner_token_t *save = tiny_scanner_now(scanner);
     for (tiny_parser_t *cld = ctx.current_parser->child; cld; cld = cld->sibling)
     {
@@ -104,9 +167,19 @@ static tiny_parser_result_t parser_or(tiny_parser_ctx_t ctx, tiny_scanner_t *sca
             return next;
         }
         else
+        {
+            if (next.fatal)
+                return next;
+            int mydiff = tiny_scanner_diff(scanner, save);
+            if (mydiff > diff)
+            {
+                diff = mydiff;
+                one = next;
+            }
             tiny_scanner_reset(scanner, save);
+        }
     }
-    return make_failure_result(tiny_scanner_peek(scanner), STATE_ERROR);
+    return one;
 }
 
 tiny_parser_t *tiny_make_parser_or(int n, ...)
@@ -147,7 +220,8 @@ static tiny_parser_result_t parser_sequence(tiny_parser_ctx_t ctx, tiny_scanner_
     }
     if (tiny_ast_child_count(ast) <= 1)
     {
-        if (ast->desc != 0 && ast->child) ast->child->desc = ast->desc;
+        if (ast->desc != 0 && ast->child)
+            ast->child->desc = ast->desc;
         return make_success_result(ast->child);
     }
     else
@@ -176,8 +250,7 @@ static tiny_parser_result_t parser_grammar(tiny_parser_ctx_t ctx, tiny_scanner_t
 {
     tiny_parser_ctx_t subctx = {
         .parsers = ctx.parsers,
-        .current_parser = trie_search(ctx.parsers, ctx.current_parser->token)
-    };
+        .current_parser = trie_search(ctx.parsers, ctx.current_parser->token)};
 
     assert(subctx.current_parser != NULL);
     return tiny_syntax_parse(subctx, scanner);
@@ -205,7 +278,7 @@ static tiny_parser_result_t parser_optional(tiny_parser_ctx_t ctx, tiny_scanner_
         return result;
     else
         tiny_scanner_reset(scanner, save);
-    
+
     return make_success_result(ast);
 }
 
@@ -220,9 +293,17 @@ tiny_parser_t *tiny_make_parser_optional(tiny_parser_t *optional)
 static tiny_parser_result_t parser_token(tiny_parser_ctx_t ctx, tiny_scanner_t *scanner)
 {
     tiny_lex_token_t token = tiny_scanner_next(scanner);
-    if (token.error)
-        if (token.error == TINY_EOF) return make_failure_result(token, TINY_UNEXPECTED_EOF);
-        else return make_failure_result(token, token.error);
+    if (token.error != 0)
+        if (token.error == TINY_EOF)
+        {
+            return make_failure_result(token, ctx.current_parser->token, TINY_UNEXPECTED_EOF);
+        }
+        else
+        {
+            tiny_parser_result_t result = make_failure_result(token, ctx.current_parser->token, token.error);
+            result.fatal = token.error != TINY_EOF;
+            return result;
+        }
 
     if (strsecmp(token.s, token.e, ctx.current_parser->token))
     {
@@ -232,7 +313,7 @@ static tiny_parser_result_t parser_token(tiny_parser_ctx_t ctx, tiny_scanner_t *
     }
     else
     {
-        return make_failure_result(token, STATE_ERROR);
+        return make_failure_result(token, ctx.current_parser->token, TINY_UNEXPECTED_TOKEN);
     }
 }
 
@@ -244,10 +325,41 @@ tiny_parser_t *tiny_make_parser_token(const char *name)
     return ret;
 }
 
+static tiny_parser_result_t parser_token_eof(tiny_parser_ctx_t ctx, tiny_scanner_t *scanner)
+{
+    tiny_lex_token_t token = tiny_scanner_next(scanner);
+    if (token.error == TINY_EOF)
+    {
+        return make_success_result(NULL);
+    }
+    else if (token.error != 0)
+    {
+        tiny_parser_result_t result = make_failure_result(token, ctx.current_parser->token, token.error);
+        result.fatal = token.error != TINY_EOF;
+        return result;
+    }
+    else
+    {
+        return make_failure_result(token, ctx.current_parser->token, TINY_EOF);
+    }
+}
+
+tiny_parser_t *tiny_make_parser_token_eof()
+{
+    tiny_parser_t *ret = tiny_make_parser();
+    ret->parser = parser_token_eof;
+    return ret;
+}
+
 static tiny_parser_result_t parser_token_ignore_case(tiny_parser_ctx_t ctx, tiny_scanner_t *scanner)
 {
     tiny_lex_token_t token = tiny_scanner_next(scanner);
-    if (token.error) return make_failure_result(token, token.error);
+    if (token.error)
+    {
+        tiny_parser_result_t result = make_failure_result(token, ctx.current_parser->token, token.error);
+        result.fatal = token.error != TINY_EOF;;
+        return result;
+    }
     const char *s = token.s, *e = token.e, *t = ctx.current_parser->token;
     const char *i;
     for (i = s; i != e && *t; ++i, ++t)
@@ -261,7 +373,7 @@ static tiny_parser_result_t parser_token_ignore_case(tiny_parser_ctx_t ctx, tiny
     }
     else
     {
-        return make_failure_result(token, STATE_ERROR);
+        return make_failure_result(token, ctx.current_parser->token, TINY_UNEXPECTED_TOKEN);
     }
 }
 
@@ -276,6 +388,13 @@ tiny_parser_t *tiny_make_parser_token_ignore_case(const char *name)
 static tiny_parser_result_t parser_token_predicate(tiny_parser_ctx_t ctx, tiny_scanner_t *scanner)
 {
     tiny_lex_token_t token = tiny_scanner_next(scanner);
+    if (token.error)
+    {
+        tiny_parser_result_t result = make_failure_result(token, ctx.current_parser->token, token.error);
+        result.fatal = token.error != TINY_EOF;
+        return result;
+    }
+
     if (ctx.current_parser->predicate(token.s, token.e))
     {
         tiny_ast_t *ast = tiny_make_ast(ctx.current_parser->desc);
@@ -284,7 +403,7 @@ static tiny_parser_result_t parser_token_predicate(tiny_parser_ctx_t ctx, tiny_s
     }
     else
     {
-        return make_failure_result(token, STATE_ERROR);
+        return make_failure_result(token, ctx.current_parser->token, TINY_UNEXPECTED_TOKEN);
     }
 }
 
@@ -316,6 +435,8 @@ static tiny_parser_result_t parser_separation(tiny_parser_ctx_t ctx, tiny_scanne
             }
             else
             {
+                if (next.fatal)
+                    return next;
                 if (first)
                 {
                     tiny_scanner_reset(scanner, save);
@@ -324,7 +445,7 @@ static tiny_parser_result_t parser_separation(tiny_parser_ctx_t ctx, tiny_scanne
                 else
                 {
                     tiny_free_ast(ast);
-                    return make_failure_result(tiny_scanner_peek(scanner), STATE_ERROR);
+                    return next;
                 }
             }
         }
@@ -337,10 +458,12 @@ static tiny_parser_result_t parser_separation(tiny_parser_ctx_t ctx, tiny_scanne
 
             if (next.state == STATE_SUCCESS)
             {
-                tiny_free_ast(next.ast);
+                tiny_ast_add_child(ast, next.ast);
             }
             else
             {
+                if (next.fatal)
+                    return next;
                 tiny_scanner_reset(scanner, save);
                 return make_success_result(ast);
             }
